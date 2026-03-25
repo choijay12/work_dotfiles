@@ -1,0 +1,26 @@
+# Ghostty Configuration
+# https://ghostty.org/docs/config
+
+# Font — required for Powerlevel10k icons
+font-family = MesloLGS NF
+font-size = 13
+
+# Window
+window-padding-x = 8
+window-padding-y = 8
+
+# Theme
+theme = GruvboxDark
+
+# Shell integration
+shell-integration = zsh
+
+# Cursor
+cursor-style = block
+cursor-style-blink = false
+
+# Scrollback
+scrollback-limit = 10000
+
+# macOS specific
+macos-option-as-alt = true
