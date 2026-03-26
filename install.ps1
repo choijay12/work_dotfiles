@@ -1,5 +1,5 @@
 # =============================================================================
-# Dotfiles Installer — Windows
+# Dotfiles Installer - Windows
 # Installs Claude Code natively, then sets up WSL2 with the full
 # zsh / oh-my-zsh / neovim stack via the Linux installer.
 # Run from an elevated (Administrator) PowerShell prompt.
@@ -9,11 +9,11 @@
 $ErrorActionPreference = "Stop"
 $DOTFILES_DIR = Split-Path -Parent $MyInvocation.MyCommand.Path
 
-# ── Helpers ───────────────────────────────────────────────────────────────────
-function Log   { param([string]$msg) Write-Host "[✓] $msg" -ForegroundColor Green }
+# -- Helpers -------------------------------------------------------------------
+function Log   { param([string]$msg) Write-Host "[[OK]] $msg" -ForegroundColor Green }
 function Warn  { param([string]$msg) Write-Host "[!] $msg" -ForegroundColor Yellow }
-function Err   { param([string]$msg) Write-Host "[✗] $msg" -ForegroundColor Red; exit 1 }
-function Step  { param([string]$msg) Write-Host "`n──▶ $msg" -ForegroundColor Cyan }
+function Err   { param([string]$msg) Write-Host "[[ERR]] $msg" -ForegroundColor Red; exit 1 }
+function Step  { param([string]$msg) Write-Host "`n--> $msg" -ForegroundColor Cyan }
 function Info  { param([string]$msg) Write-Host "    $msg" -ForegroundColor Gray }
 
 function Test-Command { param([string]$cmd) return [bool](Get-Command $cmd -ErrorAction SilentlyContinue) }
@@ -23,15 +23,15 @@ function Test-Admin {
     return $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
 }
 
-# ── Banner ────────────────────────────────────────────────────────────────────
+# -- Banner --------------------------------------------------------------------
 function Show-Banner {
     Write-Host ""
-    Write-Host "  DOTFILES INSTALLER — Windows" -ForegroundColor Blue
+    Write-Host "  DOTFILES INSTALLER - Windows" -ForegroundColor Blue
     Write-Host "  Sets up WSL2 + Claude Code" -ForegroundColor Gray
     Write-Host ""
 }
 
-# ── Winget ────────────────────────────────────────────────────────────────────
+# -- Winget --------------------------------------------------------------------
 function Install-Winget {
     Step "Checking winget..."
     if (Test-Command "winget") {
@@ -43,7 +43,7 @@ function Install-Winget {
     }
 }
 
-# ── WSL2 ──────────────────────────────────────────────────────────────────────
+# -- WSL2 ----------------------------------------------------------------------
 function Install-WSL {
     Step "Setting up WSL2..."
 
@@ -88,7 +88,7 @@ function Install-WSL {
     Log "Ubuntu WSL distro found"
 }
 
-# ── Nerd Font ─────────────────────────────────────────────────────────────────
+# -- Nerd Font -----------------------------------------------------------------
 function Install-NerdFont {
     Step "Installing MesloLGS NF (Powerlevel10k font)..."
     $fontDir = "$env:LOCALAPPDATA\Microsoft\Windows\Fonts"
@@ -118,7 +118,7 @@ function Install-NerdFont {
     Log "MesloLGS NF fonts installed"
 }
 
-# ── Claude Code (Windows-native) ──────────────────────────────────────────────
+# -- Claude Code (Windows-native) ----------------------------------------------
 function Install-ClaudeCode {
     Step "Installing Claude Code (Windows)..."
 
@@ -139,7 +139,7 @@ function Install-ClaudeCode {
     }
 }
 
-# ── Claude Code Config ────────────────────────────────────────────────────────
+# -- Claude Code Config --------------------------------------------------------
 function Install-ClaudeConfig {
     Step "Installing Claude Code config..."
     $claudeDir = "$env:USERPROFILE\.claude"
@@ -149,7 +149,7 @@ function Install-ClaudeConfig {
     if ((Test-Path $dst) -and -not ((Get-Item $dst).LinkType -eq "SymbolicLink")) {
         $backup = "$dst.bak.$(Get-Date -Format 'yyyyMMddHHmmss')"
         Move-Item $dst $backup
-        Warn "Backed up Claude settings → $backup"
+        Warn "Backed up Claude settings -> $backup"
     }
     try {
         New-Item -ItemType SymbolicLink -Path $dst -Target $src -Force | Out-Null
@@ -160,14 +160,14 @@ function Install-ClaudeConfig {
     }
 }
 
-# ── Run Linux Installer in WSL ────────────────────────────────────────────────
+# -- Run Linux Installer in WSL ------------------------------------------------
 function Invoke-WSLInstaller {
     Step "Running Linux dotfiles installer in WSL..."
 
     # Convert Windows path to WSL path
     $wslPath = (wsl wslpath -u "$($DOTFILES_DIR -replace '\\', '/')" 2>$null).Trim()
     if (-not $wslPath) {
-        # Manual conversion fallback: C:\Users\... → /mnt/c/Users/...
+        # Manual conversion fallback: C:\Users\... -> /mnt/c/Users/...
         $wslPath = "/" + ($DOTFILES_DIR -replace "\\", "/" -replace "^([A-Za-z]):", { "/mnt/" + $Matches[1].ToLower() })
     }
 
@@ -183,12 +183,12 @@ function Invoke-WSLInstaller {
     }
 }
 
-# ── Main ──────────────────────────────────────────────────────────────────────
+# -- Main ----------------------------------------------------------------------
 function Main {
     Show-Banner
 
     if (-not (Test-Admin)) {
-        Err "Please run this script as Administrator (right-click → 'Run as Administrator')."
+        Err "Please run this script as Administrator (right-click -> 'Run as Administrator')."
     }
 
     Install-Winget
@@ -199,12 +199,12 @@ function Main {
     Invoke-WSLInstaller
 
     Write-Host ""
-    Write-Host "  ✓ All done!" -ForegroundColor Green
+    Write-Host "  [OK] All done!" -ForegroundColor Green
     Write-Host ""
     Write-Host "  Post-install checklist:" -ForegroundColor Yellow
-    Write-Host "  • Run 'claude' in PowerShell to log in to Claude Code" -ForegroundColor Gray
-    Write-Host "  • Open WSL (Ubuntu) for your zsh/neovim environment" -ForegroundColor Gray
-    Write-Host "  • Run 'p10k configure' inside WSL to tune the prompt" -ForegroundColor Gray
+    Write-Host "  * Run 'claude' in PowerShell to log in to Claude Code" -ForegroundColor Gray
+    Write-Host "  * Open WSL (Ubuntu) for your zsh/neovim environment" -ForegroundColor Gray
+    Write-Host "  * Run 'p10k configure' inside WSL to tune the prompt" -ForegroundColor Gray
     Write-Host ""
 }
 
