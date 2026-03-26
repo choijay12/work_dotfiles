@@ -268,6 +268,10 @@ function Main {
     Install-ClaudeConfig
     Invoke-WSLInstaller
 
+    # Restore execution policy to default
+    Set-ExecutionPolicy -ExecutionPolicy Restricted -Scope CurrentUser -Force
+    Log "Execution policy restored to Restricted"
+
     Write-Host ""
     Write-Host "  All done!" -ForegroundColor Green
     Write-Host ""
