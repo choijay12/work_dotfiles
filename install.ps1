@@ -223,11 +223,18 @@ function Install-ClaudeConfig {
 function Invoke-WSLInstaller {
     Step "Setting up Linux environment in WSL..."
 
+    # Ensure git is available inside WSL before trying to clone
+    Info "Ensuring git is installed in WSL..."
+    wsl bash -c "command -v git >/dev/null 2>&1 || (apt-get update -qq && apt-get install -y git)"
+    if ($LASTEXITCODE -ne 0) {
+        Err "Failed to install git inside WSL. Run 'wsl' and check manually."
+    }
+
     # Clone the repo into WSL's Linux filesystem (~/dotfiles inside Ubuntu).
     # This avoids /mnt/c/ cross-filesystem issues (slow I/O, CRLF line endings,
     # permission bits not preserved, etc.).
     Info "Cloning dotfiles into WSL Linux filesystem..."
-    wsl bash -lc "
+    wsl bash -c "
         if [ -d $WSL_DOTFILES ]; then
             echo '[OK] dotfiles already cloned, pulling latest...'
             git -C $WSL_DOTFILES pull
@@ -237,11 +244,11 @@ function Invoke-WSLInstaller {
     "
 
     if ($LASTEXITCODE -ne 0) {
-        Err "Failed to clone repo into WSL. Check your internet connection and try again."
+        Err "Failed to clone repo into WSL. Run 'wsl' and try: git clone $REMOTE_URL $WSL_DOTFILES"
     }
 
     Info "Running install.sh inside WSL..."
-    wsl bash -lc "chmod +x $WSL_DOTFILES/install.sh && $WSL_DOTFILES/install.sh"
+    wsl bash -c "chmod +x $WSL_DOTFILES/install.sh && $WSL_DOTFILES/install.sh"
 
     if ($LASTEXITCODE -eq 0) {
         Log "WSL Linux setup complete"
