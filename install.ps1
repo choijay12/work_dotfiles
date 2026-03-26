@@ -138,13 +138,15 @@ function Install-WSL {
     Log "Ubuntu WSL distro found: $distroName"
 }
 
-# Detect the actual Ubuntu distro name from wsl --list output
+# Detect the actual Ubuntu distro name by probing common names directly.
+# Avoids parsing wsl --list output, which can be garbled due to UTF-16 LE
+# encoding or localized (non-English) Windows UI languages.
 function Get-UbuntuDistroName {
-    # wsl --list --quiet outputs UTF-16 LE with null bytes on some Windows versions,
-    # so we decode it explicitly to avoid garbled names.
-    $raw = wsl --list --quiet 2>$null
-    $names = $raw | ForEach-Object { $_.Trim([char]0).Trim() } | Where-Object { $_ -match "Ubuntu" }
-    if ($names) { return ($names | Select-Object -First 1) }
+    $candidates = @("Ubuntu", "Ubuntu-24.04", "Ubuntu-22.04", "Ubuntu-20.04")
+    foreach ($name in $candidates) {
+        wsl -d $name echo "ok" 2>$null | Out-Null
+        if ($LASTEXITCODE -eq 0) { return $name }
+    }
     return $null
 }
 
