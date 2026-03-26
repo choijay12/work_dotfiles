@@ -234,7 +234,7 @@ function Invoke-WSLInstaller {
     # This avoids /mnt/c/ cross-filesystem issues (slow I/O, CRLF line endings,
     # permission bits not preserved, etc.).
     Info "Cloning dotfiles into WSL Linux filesystem..."
-    wsl bash -c "[ -d $WSL_DOTFILES ] && git -C $WSL_DOTFILES pull || git clone $REMOTE_URL $WSL_DOTFILES"
+    wsl bash -c "git -C $WSL_DOTFILES rev-parse --git-dir >/dev/null 2>&1 && git -C $WSL_DOTFILES pull || (rm -rf $WSL_DOTFILES && git clone $REMOTE_URL $WSL_DOTFILES)"
 
     if ($LASTEXITCODE -ne 0) {
         Err "Failed to clone repo into WSL. Run 'wsl' and try: git clone $REMOTE_URL $WSL_DOTFILES"
