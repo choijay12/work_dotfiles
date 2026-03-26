@@ -72,24 +72,42 @@ install_packages() {
     fi
 }
 
-install_packages_linux() {
+# Returns 0 (true) if a package is NOT installed
+pkg_missing() {
+    local pkg="$1"
     case "$PKG" in
-        apt)
-            sudo apt-get update -qq
-            sudo apt-get install -y git zsh curl wget tmux build-essential unzip
-            install_neovim_linux
-            install_node_linux
-            ;;
-        pacman)
-            sudo pacman -Syu --noconfirm git zsh curl wget tmux neovim nodejs npm unzip
-            ;;
-        dnf)
-            sudo dnf install -y git zsh curl wget tmux neovim nodejs npm unzip
-            ;;
-        zypper)
-            sudo zypper install -y git zsh curl wget tmux neovim nodejs npm unzip
-            ;;
+        apt)    ! dpkg -s "$pkg" &>/dev/null ;;
+        pacman) ! pacman -Q "$pkg" &>/dev/null ;;
+        dnf)    ! rpm -q "$pkg" &>/dev/null ;;
+        zypper) ! rpm -q "$pkg" &>/dev/null ;;
+        *)      return 0 ;;
     esac
+}
+
+install_packages_linux() {
+    local pkgs=(git zsh curl wget tmux build-essential unzip)
+    local missing=()
+    for p in "${pkgs[@]}"; do
+        pkg_missing "$p" && missing+=("$p")
+    done
+
+    if [[ ${#missing[@]} -gt 0 ]]; then
+        info "Missing packages: ${missing[*]}"
+        case "$PKG" in
+            apt)
+                sudo apt-get update -qq
+                sudo apt-get install -y "${missing[@]}"
+                ;;
+            pacman) sudo pacman -S --noconfirm "${missing[@]}" ;;
+            dnf)    sudo dnf install -y "${missing[@]}" ;;
+            zypper) sudo zypper install -y "${missing[@]}" ;;
+        esac
+    else
+        info "All base packages already installed"
+    fi
+
+    install_neovim_linux
+    install_node_linux
     log "Core packages ready"
     install_ghostty_linux
 }
@@ -169,7 +187,10 @@ install_ghostty_linux() {
 install_nerd_font() {
     step "Installing MesloLGS NF (required for Powerlevel10k)..."
     if [[ "$OS" == "macos" ]]; then
-        # Homebrew cask
+        if brew list --cask font-meslo-lg-nerd-font &>/dev/null; then
+            log "MesloLGS NF already installed"
+            return
+        fi
         brew install --cask font-meslo-lg-nerd-font 2>/dev/null \
             || brew install font-meslo-lg-nerd-font 2>/dev/null \
             || warn "Could not install font via Homebrew — install 'MesloLGS NF' manually"
@@ -300,6 +321,11 @@ set_default_shell() {
 # ── Neovim Plugins ────────────────────────────────────────────────────────────
 install_nvim_plugins() {
     step "Installing Neovim plugins (gruvbox via vim-plug)..."
+    local gruvbox_dir="$HOME/.local/share/nvim/plugged/gruvbox"
+    if [[ -d "$gruvbox_dir" ]]; then
+        log "Neovim plugins already installed"
+        return
+    fi
     nvim --headless +PlugInstall +qall 2>/dev/null && log "Neovim plugins installed" \
         || warn "Neovim plugin install encountered an issue — run :PlugInstall manually"
 }
