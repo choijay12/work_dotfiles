@@ -53,10 +53,12 @@ After it finishes, restart your terminal.
 
 **Requirements:** Run PowerShell as Administrator.
 
+Since scripts are blocked by default on Windows, the first run requires a bypass flag. The script will set the execution policy automatically from that point on and restore it when done.
+
 ```powershell
 git clone https://github.com/choijay12/work_dotfiles.git $HOME\dotfiles
 cd $HOME\dotfiles
-.\install.ps1
+powershell -ExecutionPolicy Bypass -File .\install.ps1
 ```
 
 The script will:

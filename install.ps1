@@ -35,10 +35,24 @@ function Show-Banner {
     Write-Host ""
 }
 
+# -- Execution policy ----------------------------------------------------------
+function Set-ScriptExecutionPolicy {
+    $current = Get-ExecutionPolicy -Scope CurrentUser
+    if ($current -eq "Restricted" -or $current -eq "Undefined") {
+        Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser -Force
+        Log "Execution policy set to RemoteSigned"
+    } else {
+        Log "Execution policy already allows scripts ($current)"
+    }
+}
+
+function Restore-ExecutionPolicy {
+    Set-ExecutionPolicy -ExecutionPolicy Restricted -Scope CurrentUser -Force
+    Log "Execution policy restored to Restricted"
+}
+
 # -- Scheduled task: auto-resume after reboot ----------------------------------
 function Register-ResumeTask {
-    # Registers a one-shot scheduled task that re-runs this script at next logon,
-    # so the user does not have to manually re-run after reboot.
     $action  = New-ScheduledTaskAction `
         -Execute "powershell.exe" `
         -Argument "-NoProfile -ExecutionPolicy Bypass -File `"$SCRIPT_PATH`""
@@ -92,9 +106,7 @@ function Install-WSL {
         Start-Process msiexec.exe -ArgumentList "/i `"$kernelMsi`" /quiet /norestart" -Wait
         wsl --set-default-version 2 | Out-Null
 
-        # Register task so this script resumes automatically after reboot
         Register-ResumeTask
-
         Warn "Reboot required to finish enabling WSL2."
         $restart = Read-Host "Reboot now? [y/N]"
         if ($restart -ieq "y") { Restart-Computer -Force }
@@ -109,8 +121,6 @@ function Install-WSL {
     if (-not $distroName) {
         Step "Installing Ubuntu 24.04 for WSL..."
         winget install --id Canonical.Ubuntu.2404 --silent --accept-package-agreements --accept-source-agreements
-
-        # Give WSL a moment to register the distro
         Start-Sleep -Seconds 3
         $distroName = Get-UbuntuDistroName
 
@@ -119,23 +129,35 @@ function Install-WSL {
         }
 
         Log "Ubuntu installed as: $distroName"
-
-        # Set as default so 'wsl' commands target it
         wsl --set-default $distroName
-
-        # First launch to initialize - user must set username/password
-        Info "Ubuntu needs a one-time setup (username + password)."
-        Info "Once you are at the Ubuntu prompt, type 'exit' to return here."
-        wsl --distribution $distroName
-
-        # Register task so this script resumes on next logon after user exits WSL
-        Register-ResumeTask
-        Info "Script will resume automatically on next login. You can also re-run it manually."
-        exit 0
     }
 
+    # Check if Ubuntu first-run is complete by seeing if a non-root default user exists
+    $wslUser = (wsl -d $distroName bash -c "id -un" 2>$null).Trim()
+    if ($wslUser -eq "root" -or [string]::IsNullOrEmpty($wslUser)) {
+        Write-Host ""
+        Write-Host "  Ubuntu needs a one-time setup before we can continue." -ForegroundColor Yellow
+        Write-Host "  A new Ubuntu window will open. Please:" -ForegroundColor Yellow
+        Write-Host "    1. Set your username and password" -ForegroundColor White
+        Write-Host "    2. Type 'exit' when done" -ForegroundColor White
+        Write-Host ""
+        Read-Host "Press Enter to open Ubuntu"
+
+        # Open Ubuntu in a new window and wait for it to close
+        Start-Process "wsl.exe" -ArgumentList "--distribution $distroName" -Wait
+
+        # Re-check the user after setup
+        $wslUser = (wsl -d $distroName bash -c "id -un" 2>$null).Trim()
+        if ($wslUser -eq "root" -or [string]::IsNullOrEmpty($wslUser)) {
+            Warn "Ubuntu still running as root - setup may be incomplete."
+            Warn "Re-run this script after completing Ubuntu first-run setup."
+            Register-ResumeTask
+            exit 0
+        }
+    }
+
+    Log "Ubuntu ready - running as user: $wslUser"
     wsl --set-default $distroName
-    Log "Ubuntu WSL distro found: $distroName"
 }
 
 # Detect the actual Ubuntu distro name by probing common names directly.
@@ -223,25 +245,28 @@ function Install-ClaudeConfig {
 function Invoke-WSLInstaller {
     Step "Setting up Linux environment in WSL..."
 
+    # Get the actual WSL username to ensure everything installs under their home
+    $distroName = Get-UbuntuDistroName
+    $wslUser = (wsl -d $distroName bash -c "id -un" 2>$null).Trim()
+    Info "Installing as WSL user: $wslUser"
+
     # Ensure git is available inside WSL before trying to clone
     Info "Ensuring git is installed in WSL..."
-    wsl bash -c "command -v git >/dev/null 2>&1 || (sudo apt-get update -qq && sudo apt-get install -y git)"
+    wsl -d $distroName -u $wslUser bash -c "command -v git >/dev/null 2>&1 || (sudo apt-get update -qq && sudo apt-get install -y git)"
     if ($LASTEXITCODE -ne 0) {
         Err "Failed to install git inside WSL. Run 'wsl' and check manually."
     }
 
-    # Clone the repo into WSL's Linux filesystem (~/dotfiles inside Ubuntu).
-    # This avoids /mnt/c/ cross-filesystem issues (slow I/O, CRLF line endings,
-    # permission bits not preserved, etc.).
+    # Clone into the user's home directory inside WSL's Linux filesystem.
+    # Avoids /mnt/c/ cross-filesystem issues (slow I/O, CRLF endings, no exec bits).
     Info "Cloning dotfiles into WSL Linux filesystem..."
-    wsl bash -c "git -C $WSL_DOTFILES rev-parse --git-dir >/dev/null 2>&1 && git -C $WSL_DOTFILES pull || (rm -rf $WSL_DOTFILES && git clone $REMOTE_URL $WSL_DOTFILES)"
-
+    wsl -d $distroName -u $wslUser bash -c "git -C $WSL_DOTFILES rev-parse --git-dir >/dev/null 2>&1 && git -C $WSL_DOTFILES pull || (rm -rf $WSL_DOTFILES && git clone $REMOTE_URL $WSL_DOTFILES)"
     if ($LASTEXITCODE -ne 0) {
         Err "Failed to clone repo into WSL. Run 'wsl' and try: git clone $REMOTE_URL $WSL_DOTFILES"
     }
 
     Info "Running install.sh inside WSL..."
-    wsl bash -c "chmod +x $WSL_DOTFILES/install.sh && $WSL_DOTFILES/install.sh"
+    wsl -d $distroName -u $wslUser bash -c "chmod +x $WSL_DOTFILES/install.sh && $WSL_DOTFILES/install.sh"
 
     if ($LASTEXITCODE -eq 0) {
         Log "WSL Linux setup complete"
@@ -258,6 +283,9 @@ function Main {
         Err "Please run this script as Administrator (right-click -> 'Run as Administrator')."
     }
 
+    # Allow scripts to run for this session and future re-runs
+    Set-ScriptExecutionPolicy
+
     # Clean up the resume task if this is a post-reboot run
     Remove-ResumeTask
 
@@ -268,9 +296,8 @@ function Main {
     Install-ClaudeConfig
     Invoke-WSLInstaller
 
-    # Restore execution policy to default
-    Set-ExecutionPolicy -ExecutionPolicy Restricted -Scope CurrentUser -Force
-    Log "Execution policy restored to Restricted"
+    # Restore execution policy now that we're fully done
+    Restore-ExecutionPolicy
 
     Write-Host ""
     Write-Host "  All done!" -ForegroundColor Green
