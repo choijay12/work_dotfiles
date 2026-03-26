@@ -105,17 +105,28 @@ function Install-WSL {
     Log "WSL2 is enabled"
 
     # Install Ubuntu if not present
-    $distros = wsl --list --quiet 2>$null
-    $hasUbuntu = $distros | Where-Object { $_ -match "Ubuntu" }
-    if (-not $hasUbuntu) {
+    $distroName = Get-UbuntuDistroName
+    if (-not $distroName) {
         Step "Installing Ubuntu 24.04 for WSL..."
         winget install --id Canonical.Ubuntu.2404 --silent --accept-package-agreements --accept-source-agreements
-        Log "Ubuntu 24.04 installed"
 
-        # First launch to initialize — user must set username/password
+        # Give WSL a moment to register the distro
+        Start-Sleep -Seconds 3
+        $distroName = Get-UbuntuDistroName
+
+        if (-not $distroName) {
+            Err "Ubuntu installed but distro name could not be detected. Run 'wsl --list' to check, then re-run this script."
+        }
+
+        Log "Ubuntu installed as: $distroName"
+
+        # Set as default so 'wsl' commands target it
+        wsl --set-default $distroName
+
+        # First launch to initialize - user must set username/password
         Info "Ubuntu needs a one-time setup (username + password)."
         Info "Once you are at the Ubuntu prompt, type 'exit' to return here."
-        wsl --distribution Ubuntu-24.04
+        wsl --distribution $distroName
 
         # Register task so this script resumes on next logon after user exits WSL
         Register-ResumeTask
@@ -123,7 +134,18 @@ function Install-WSL {
         exit 0
     }
 
-    Log "Ubuntu WSL distro found"
+    wsl --set-default $distroName
+    Log "Ubuntu WSL distro found: $distroName"
+}
+
+# Detect the actual Ubuntu distro name from wsl --list output
+function Get-UbuntuDistroName {
+    # wsl --list --quiet outputs UTF-16 LE with null bytes on some Windows versions,
+    # so we decode it explicitly to avoid garbled names.
+    $raw = wsl --list --quiet 2>$null
+    $names = $raw | ForEach-Object { $_.Trim([char]0).Trim() } | Where-Object { $_ -match "Ubuntu" }
+    if ($names) { return ($names | Select-Object -First 1) }
+    return $null
 }
 
 # -- Nerd Font -----------------------------------------------------------------
