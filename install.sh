@@ -95,7 +95,7 @@ install_packages_linux() {
         info "Missing packages: ${missing[*]}"
         case "$PKG" in
             apt)
-                sudo apt-get update -qq
+                sudo apt-get update -qq 2>&1 | grep -v "^W:" || true
                 sudo apt-get install -y "${missing[@]}"
                 ;;
             pacman) sudo pacman -S --noconfirm "${missing[@]}" ;;
