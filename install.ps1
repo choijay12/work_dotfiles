@@ -7,12 +7,16 @@
 #Requires -Version 5.1
 
 $ErrorActionPreference = "Stop"
-$DOTFILES_DIR = Split-Path -Parent $MyInvocation.MyCommand.Path
+$SCRIPT_PATH = $MyInvocation.MyCommand.Path
+$DOTFILES_DIR = Split-Path -Parent $SCRIPT_PATH
+$TASK_NAME = "DotfilesInstallResume"
+$REMOTE_URL = "https://github.com/choijay12/work_dotfiles.git"
+$WSL_DOTFILES = "~/dotfiles"
 
 # -- Helpers -------------------------------------------------------------------
-function Log   { param([string]$msg) Write-Host "[[OK]] $msg" -ForegroundColor Green }
+function Log   { param([string]$msg) Write-Host "[OK] $msg" -ForegroundColor Green }
 function Warn  { param([string]$msg) Write-Host "[!] $msg" -ForegroundColor Yellow }
-function Err   { param([string]$msg) Write-Host "[[ERR]] $msg" -ForegroundColor Red; exit 1 }
+function Err   { param([string]$msg) Write-Host "[ERR] $msg" -ForegroundColor Red; exit 1 }
 function Step  { param([string]$msg) Write-Host "`n--> $msg" -ForegroundColor Cyan }
 function Info  { param([string]$msg) Write-Host "    $msg" -ForegroundColor Gray }
 
@@ -29,6 +33,32 @@ function Show-Banner {
     Write-Host "  DOTFILES INSTALLER - Windows" -ForegroundColor Blue
     Write-Host "  Sets up WSL2 + Claude Code" -ForegroundColor Gray
     Write-Host ""
+}
+
+# -- Scheduled task: auto-resume after reboot ----------------------------------
+function Register-ResumeTask {
+    # Registers a one-shot scheduled task that re-runs this script at next logon,
+    # so the user does not have to manually re-run after reboot.
+    $action  = New-ScheduledTaskAction `
+        -Execute "powershell.exe" `
+        -Argument "-NoProfile -ExecutionPolicy Bypass -File `"$SCRIPT_PATH`""
+    $trigger = New-ScheduledTaskTrigger -AtLogOn -User $env:USERNAME
+    $settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries
+    Register-ScheduledTask `
+        -TaskName $TASK_NAME `
+        -Action $action `
+        -Trigger $trigger `
+        -Settings $settings `
+        -RunLevel Highest `
+        -Force | Out-Null
+    Log "Registered resume task - script will continue automatically after reboot"
+}
+
+function Remove-ResumeTask {
+    if (Get-ScheduledTask -TaskName $TASK_NAME -ErrorAction SilentlyContinue) {
+        Unregister-ScheduledTask -TaskName $TASK_NAME -Confirm:$false
+        Log "Removed resume task"
+    }
 }
 
 # -- Winget --------------------------------------------------------------------
@@ -51,11 +81,10 @@ function Install-WSL {
     $vmFeature   = Get-WindowsOptionalFeature -Online -FeatureName VirtualMachinePlatform -ErrorAction SilentlyContinue
 
     if ($wslFeature.State -ne "Enabled" -or $vmFeature.State -ne "Enabled") {
-        Info "Enabling WSL2 features (requires reboot)..."
+        Info "Enabling WSL2 features..."
         Enable-WindowsOptionalFeature -Online -FeatureName Microsoft-Windows-Subsystem-Linux -All -NoRestart | Out-Null
         Enable-WindowsOptionalFeature -Online -FeatureName VirtualMachinePlatform -All -NoRestart | Out-Null
 
-        # Download and install the WSL2 kernel update
         $kernelUrl = "https://wslstorestorage.blob.core.windows.net/wslblob/wsl_update_x64.msi"
         $kernelMsi = "$env:TEMP\wsl_update_x64.msi"
         Info "Downloading WSL2 kernel update..."
@@ -63,28 +92,37 @@ function Install-WSL {
         Start-Process msiexec.exe -ArgumentList "/i `"$kernelMsi`" /quiet /norestart" -Wait
         wsl --set-default-version 2 | Out-Null
 
-        Warn "A reboot is required to complete WSL2 setup."
-        Warn "After rebooting, re-run this script to continue."
+        # Register task so this script resumes automatically after reboot
+        Register-ResumeTask
+
+        Warn "Reboot required to finish enabling WSL2."
         $restart = Read-Host "Reboot now? [y/N]"
-        if ($restart -ieq "y") { Restart-Computer }
+        if ($restart -ieq "y") { Restart-Computer -Force }
         exit 0
     }
 
-    # Set WSL2 as default
     wsl --set-default-version 2 2>$null | Out-Null
     Log "WSL2 is enabled"
 
-    # Check for Ubuntu
+    # Install Ubuntu if not present
     $distros = wsl --list --quiet 2>$null
     $hasUbuntu = $distros | Where-Object { $_ -match "Ubuntu" }
     if (-not $hasUbuntu) {
         Step "Installing Ubuntu 24.04 for WSL..."
         winget install --id Canonical.Ubuntu.2404 --silent --accept-package-agreements --accept-source-agreements
         Log "Ubuntu 24.04 installed"
-        Info "Please complete Ubuntu first-run setup (set username/password) then re-run this script."
+
+        # First launch to initialize — user must set username/password
+        Info "Ubuntu needs a one-time setup (username + password)."
+        Info "Once you are at the Ubuntu prompt, type 'exit' to return here."
         wsl --distribution Ubuntu-24.04
+
+        # Register task so this script resumes on next logon after user exits WSL
+        Register-ResumeTask
+        Info "Script will resume automatically on next login. You can also re-run it manually."
         exit 0
     }
+
     Log "Ubuntu WSL distro found"
 }
 
@@ -109,7 +147,6 @@ function Install-NerdFont {
             Info "Downloading $font..."
             Invoke-WebRequest -Uri $url -OutFile $dest -UseBasicParsing
         }
-        # Register font for current user
         $fontName = [System.IO.Path]::GetFileNameWithoutExtension($font) + " (TrueType)"
         if (-not (Get-ItemProperty -Path $registry -Name $fontName -ErrorAction SilentlyContinue)) {
             New-ItemProperty -Path $registry -Name $fontName -Value $dest -PropertyType String -Force | Out-Null
@@ -122,11 +159,9 @@ function Install-NerdFont {
 function Install-ClaudeCode {
     Step "Installing Claude Code (Windows)..."
 
-    # Ensure Node.js is available
     if (-not (Test-Command "node")) {
         Info "Installing Node.js LTS via winget..."
         winget install --id OpenJS.NodeJS.LTS --silent --accept-package-agreements --accept-source-agreements
-        # Refresh PATH
         $env:PATH = [System.Environment]::GetEnvironmentVariable("PATH", "Machine") + ";" +
                     [System.Environment]::GetEnvironmentVariable("PATH", "User")
     }
@@ -160,21 +195,29 @@ function Install-ClaudeConfig {
     }
 }
 
-# -- Run Linux Installer in WSL ------------------------------------------------
+# -- Run Linux installer inside WSL's own filesystem --------------------------
 function Invoke-WSLInstaller {
-    Step "Running Linux dotfiles installer in WSL..."
+    Step "Setting up Linux environment in WSL..."
 
-    # Convert Windows path to WSL path
-    $wslPath = (wsl wslpath -u "$($DOTFILES_DIR -replace '\\', '/')" 2>$null).Trim()
-    if (-not $wslPath) {
-        # Manual conversion fallback: C:\Users\... -> /mnt/c/Users/...
-        $wslPath = "/" + ($DOTFILES_DIR -replace "\\", "/" -replace "^([A-Za-z]):", { "/mnt/" + $Matches[1].ToLower() })
+    # Clone the repo into WSL's Linux filesystem (~/dotfiles inside Ubuntu).
+    # This avoids /mnt/c/ cross-filesystem issues (slow I/O, CRLF line endings,
+    # permission bits not preserved, etc.).
+    Info "Cloning dotfiles into WSL Linux filesystem..."
+    wsl bash -lc "
+        if [ -d $WSL_DOTFILES ]; then
+            echo '[OK] dotfiles already cloned, pulling latest...'
+            git -C $WSL_DOTFILES pull
+        else
+            git clone $REMOTE_URL $WSL_DOTFILES
+        fi
+    "
+
+    if ($LASTEXITCODE -ne 0) {
+        Err "Failed to clone repo into WSL. Check your internet connection and try again."
     }
 
-    $linuxScript = "$wslPath/install.sh"
-    Info "WSL path: $linuxScript"
-
-    wsl bash -c "chmod +x '$linuxScript' && '$linuxScript'"
+    Info "Running install.sh inside WSL..."
+    wsl bash -lc "chmod +x $WSL_DOTFILES/install.sh && $WSL_DOTFILES/install.sh"
 
     if ($LASTEXITCODE -eq 0) {
         Log "WSL Linux setup complete"
@@ -191,6 +234,9 @@ function Main {
         Err "Please run this script as Administrator (right-click -> 'Run as Administrator')."
     }
 
+    # Clean up the resume task if this is a post-reboot run
+    Remove-ResumeTask
+
     Install-Winget
     Install-WSL
     Install-NerdFont
@@ -199,7 +245,7 @@ function Main {
     Invoke-WSLInstaller
 
     Write-Host ""
-    Write-Host "  [OK] All done!" -ForegroundColor Green
+    Write-Host "  All done!" -ForegroundColor Green
     Write-Host ""
     Write-Host "  Post-install checklist:" -ForegroundColor Yellow
     Write-Host "  * Run 'claude' in PowerShell to log in to Claude Code" -ForegroundColor Gray
