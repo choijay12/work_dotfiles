@@ -225,7 +225,7 @@ function Invoke-WSLInstaller {
 
     # Ensure git is available inside WSL before trying to clone
     Info "Ensuring git is installed in WSL..."
-    wsl bash -c "command -v git >/dev/null 2>&1 || apt-get update -qq && apt-get install -y git"
+    wsl bash -c "command -v git >/dev/null 2>&1 || (sudo apt-get update -qq && sudo apt-get install -y git)"
     if ($LASTEXITCODE -ne 0) {
         Err "Failed to install git inside WSL. Run 'wsl' and check manually."
     }
