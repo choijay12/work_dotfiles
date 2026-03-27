@@ -283,11 +283,17 @@ install_configs() {
     mkdir -p "$HOME/.config/nvim"
     link_config "$DOTFILES_DIR/configs/nvim/init.vim"   "$HOME/.config/nvim/init.vim"
 
-    mkdir -p "$HOME/.claude"
+    mkdir -p "$HOME/.claude/hooks"
     link_config "$DOTFILES_DIR/configs/claude/settings.json" "$HOME/.claude/settings.json"
+    link_config "$DOTFILES_DIR/configs/claude/statusline.sh" "$HOME/.claude/statusline.sh"
+    link_config "$DOTFILES_DIR/configs/claude/hooks/context-display.sh" "$HOME/.claude/hooks/context-display.sh"
+    link_config "$DOTFILES_DIR/configs/claude/context-parser.sh" "$HOME/.claude/context-parser.sh"
 
     mkdir -p "$HOME/.config/ghostty"
     link_config "$DOTFILES_DIR/configs/ghostty/config"  "$HOME/.config/ghostty/config"
+
+    mkdir -p "$HOME/.config"
+    link_config "$DOTFILES_DIR/configs/tmux/.tmux.conf" "$HOME/.tmux.conf"
 }
 
 link_config() {

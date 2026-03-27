@@ -35,7 +35,11 @@ declare -a CONFIG_MAP=(
     "$HOME/.p10k.zsh|configs/zsh/.p10k.zsh"
     "$HOME/.config/nvim/init.vim|configs/nvim/init.vim"
     "$HOME/.claude/settings.json|configs/claude/settings.json"
+    "$HOME/.claude/statusline.sh|configs/claude/statusline.sh"
+    "$HOME/.claude/hooks/context-display.sh|configs/claude/hooks/context-display.sh"
+    "$HOME/.claude/context-parser.sh|configs/claude/context-parser.sh"
     "$HOME/.config/ghostty/config|configs/ghostty/config"
+    "$HOME/.tmux.conf|configs/tmux/.tmux.conf"
 )
 
 # ── Detect OS (for context in commit message) ─────────────────────────────────
