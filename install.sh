@@ -262,6 +262,19 @@ install_vim_plug() {
     fi
 }
 
+# ── Tmux Plugin Manager ───────────────────────────────────────────────────────
+install_tpm() {
+    step "Installing Tmux Plugin Manager (TPM)..."
+    local tpm_dir="$HOME/.tmux/plugins/tpm"
+    if [[ -d "$tpm_dir" ]]; then
+        log "TPM already installed"
+        return
+    fi
+    mkdir -p "$HOME/.tmux/plugins"
+    git clone https://github.com/tmux-plugins/tpm "$tpm_dir"
+    log "TPM installed — plugins will auto-load on tmux start"
+}
+
 # ── Claude Code ───────────────────────────────────────────────────────────────
 install_claude_code() {
     step "Installing Claude Code..."
@@ -359,6 +372,7 @@ main() {
     install_nerd_font
     install_omz
     install_vim_plug
+    install_tpm
     install_claude_code
     install_configs
     set_default_shell
